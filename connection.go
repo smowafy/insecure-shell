@@ -65,20 +65,45 @@ func (h *handler) ensureProcessExited() {
 		return
 	}
 
+
+	log.Printf("[handler][ensure process exited] process PID: %v\n", h.cmd.Process.Pid)
+
 	// close associated pty
-	_ = h.ptmx.Close()
+	err := h.ptmx.Close()
+
+	if err != nil {
+		log.Printf("[handler][ensure process exited] closing ptmx failed, err %v\n", err)
+	}
 
 	// send a best effort TERM signal to the process
-	_ = h.cmd.Process.Signal(syscall.SIGTERM)
-	log.Printf("[handler][ensure process exited] sent a termination signal to the process\n")
+	err = h.cmd.Process.Signal(syscall.SIGTERM)
 
-	// grace period of half a second
-	<-time.After(500 * time.Millisecond)
-	log.Printf("[handler][ensure process exited] grace period of %v elapsed, force kill if still executing\n", (500 * time.Millisecond))
+	log.Printf("[handler][ensure process exited] sent a termination signal to the process, err: %v\n", err)
 
-	if h.cmd.ProcessState == nil || !h.cmd.ProcessState.Exited() {
-		log.Printf("[handler][ensure process exited] force killing process, processState: %v\n", h.cmd.ProcessState)
-		h.cmd.Process.Kill()
+	log.Printf("[handler][ensure process exited] process PID: %v\n", h.cmd.Process.Pid)
+
+	processExit := make(chan struct{})
+
+	go func() {
+		h.cmd.Process.Wait()
+
+		log.Printf("[handler][ensure][goroutine] done waiting for process\n")
+
+		processExit <- struct{}{}
+	}()
+
+	select {
+	// grace period of 5 seconds
+	case <-time.After(5 * time.Second):
+		log.Printf("[handler][ensure process exited] grace period of %v elapsed, force kill if still executing\n", (5000 * time.Millisecond))
+
+		if h.cmd.ProcessState == nil || !h.cmd.ProcessState.Exited() {
+			log.Printf("[handler][ensure process exited] attempting to kill process process\n")
+			h.cmd.Process.Kill()
+		}
+
+	case <-processExit:
+		break
 	}
 }
 
