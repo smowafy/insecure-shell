@@ -1,10 +1,11 @@
 package main
 
 import (
-	"golang.org/x/crypto/ssh/terminal"
 	"io"
 	"net"
 	"os"
+
+	"golang.org/x/crypto/ssh/terminal"
 )
 
 const sock_path string = "/tmp/ish.sock"
@@ -12,6 +13,7 @@ const sock_path string = "/tmp/ish.sock"
 func main() {
 
 	c, err := net.Dial("unix", sock_path)
+	defer c.Close()
 
 	if err != nil {
 		panic(err)
